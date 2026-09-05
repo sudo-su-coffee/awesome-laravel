@@ -46,6 +46,9 @@ Maintained under [sudo-su-coffee](https://github.com/sudo-su-coffee). Contributi
 - [Localization / Translation](#localization--translation)
 - [Queues, Jobs, Scheduling](#queues-jobs-scheduling)
 - [Payments / Billing](#payments--billing)
+- [E-Commerce Platforms / Packages](#e-commerce-platforms--packages)
+- [Gig / Delivery Platform Building Blocks](#gig--delivery-platform-building-blocks)
+- [Kafka](#kafka)
 - [Code Quality / Static Analysis](#code-quality--static-analysis)
 - [Dev Environment / Tooling](#dev-environment--tooling)
 - [Debugging Tools](#debugging-tools)
@@ -245,8 +248,55 @@ Carried over from Laravel 12: React/Svelte/Vue/Livewire starter kits (Inertia 2,
 |---|---|
 | [laravel/cashier](https://laravel.com/docs/billing) | Stripe billing/subscriptions (first-party) |
 | [laravel/cashier-paddle](https://github.com/laravel/cashier-paddle) | Paddle billing variant (first-party) |
-| [razorpay/razorpay](https://github.com/razorpay/razorpay-php) | Razorpay SDK |
 | [srmklive/paypal](https://github.com/srmklive/laravel-paypal) | PayPal integration |
+
+### Indian Payment Gateways
+| Package | Gateways covered | Notes |
+|---|---|---|
+| [anandsiddharth/laravel-razorpay](https://github.com/anandsiddharth/laravel-razorpay) | Razorpay | Thin wrapper around Razorpay's official PHP SDK — most common Razorpay integration path |
+| [razorpay/razorpay](https://github.com/razorpay/razorpay-php) | Razorpay | Official SDK (framework-agnostic), use directly if you don't want a wrapper |
+| [rushabhmishrarmz/indipay](https://github.com/rushabhmishrarmz/indipay) | CCAvenue, PayUMoney, EBS, CitrusPay, InstaMojo, Mobikwik/ZapakPay, Paytm | Actively maintained fork of the older `softon/indipay`/`ineffablesam/indipay-2` lineage — targets Laravel 10+ |
+| [PayU India](https://docs.payu.in) | PayU | No strongly-maintained Laravel wrapper as of writing — most teams call PayU's REST API directly via Guzzle/Http facade |
+| [PhonePe](https://developer.phonepe.com) | PhonePe | No mainstream Laravel package — integrate via their REST API directly |
+
+**Reality check**: the "Indian payment gateway" Laravel package space is fragmented and thinly maintained — `indipay` has had several forks/rewrites over the years (nickatwork → dbhosale → softon → ineffablesam → rushabhmishrarmz), each essentially the same wrapper. For anything beyond Razorpay (which has solid first-party SDK support), calling the gateway's REST API directly via Laravel's `Http` facade is often more reliable than trusting an unmaintained wrapper — worth weighing per-project rather than defaulting to a package.
+
+## E-Commerce Platforms / Packages
+
+| Package | Type | Notes |
+|---|---|---|
+| [aimeos/aimeos-laravel](https://github.com/aimeos/aimeos-laravel) | Full e-commerce package (not standalone app) | API-first, cloud-native, 130k+ installs, handles B2B/marketplace scale, actively maintained |
+| [bagisto/bagisto](https://github.com/bagisto/bagisto) | Standalone e-commerce application (Laravel + Vue) | Full store out of the box, good RTL/Middle-East support, has an [Octane plugin](https://packagist.org/packages/winter/wn-octane-plugin) |
+| [lunarphp/lunar](https://github.com/lunarphp/lunar) | Headless e-commerce package | API-first, modern, good for custom storefronts |
+| [vanilophp/framework](https://github.com/vanilophp/framework) | Modular e-commerce package | Pick-and-choose modules (cart, checkout, etc.) rather than a monolith |
+| [getcandy/getcandy](https://github.com/getcandy/getcandy) | Headless e-commerce package | Filament-based admin, API-first |
+
+**Pick guide**: full standalone app → Bagisto. Add e-commerce to an existing Laravel app → Aimeos or Lunar. Fully custom/composable → Vanilo.
+
+## Gig / Delivery Platform Building Blocks
+
+Laravel's package ecosystem for real-time dispatch/geolocation is genuinely thin — most production gig/delivery platforms (including your own dispatchd-go work) end up hand-rolling geospatial indexing rather than relying on these. Listed for completeness:
+
+| Package | Purpose | Notes |
+|---|---|---|
+| [netsells/laravel-geoscope](https://github.com/netsells/laravel-geoscope) | Distance queries + geofencing via model trait/query builder | Uses native DB functions (not haversine in PHP) — MySQL/MariaDB/Postgres/SQL Server. Best-maintained option in this category. |
+| [salmanzafar/laravel-geo-fence](https://packagist.org/packages/salmanzafar/laravel-geo-fence) | Simple lat/long distance calculator | Basic haversine wrapper, fine for low-volume use |
+| PostGIS (Postgres extension, not Composer) | Proper geospatial indexing/queries | If you're outgrowing haversine-in-PHP packages, this — plus raw queries — is the actual scalable path, same category of decision you already made going custom with sharded geohash in Go |
+| [laravel/reverb](https://laravel.com/docs/reverb) | Real-time rider/order location broadcasting | Self-hosted WebSocket layer for live tracking UI |
+| [spatie/laravel-model-states](https://github.com/spatie/laravel-model-states) | Order/trip state machine | Relevant to the trip/order state machine you still need for the gig platform |
+| [mateusjunges/laravel-kafka](https://laravelkafka.com) | Kafka producer/consumer for Laravel | See Kafka section below — relevant for event-driven order/dispatch pipelines at scale |
+
+**Honest take**: for anything beyond basic radius queries, Laravel packages won't get you where dispatchd-go already is (sharded geohash + Vyukov MPMC). These are useful for a Laravel-side admin/reporting layer talking to Postgres, not for replacing your matching engine.
+
+## Kafka
+
+| Package | Notes |
+|---|---|
+| [mateusjunges/laravel-kafka](https://laravelkafka.com) | **Standard choice** — 4M+ downloads, 728+ stars, actively maintained, dedicated docs site. Chainable producer API, consumer builder with groups/handlers, invokable handler classes, JSON serialization built-in. Requires PHP `ext-rdkafka`. Laravel 9+. |
+| `ext-rdkafka` (PECL, not Composer) | Required PHP extension — `pecl install rdkafka`, needs `librdkafka` system library installed first |
+| [junges/kafka batch fork (chocofamilyme/laravel-kafka)](https://github.com/vevovip/laravel-kafka) | Adds batch produce/consume on top of `mateusjunges/laravel-kafka` — useful if you're doing high-throughput event batches |
+
+**Setup note**: `librdkafka` (system lib) → `pecl install rdkafka` (PHP ext) → `composer require mateusjunges/laravel-kafka`, in that order. Most install failures come from skipping the system library step.
 
 ## Code Quality / Static Analysis
 
@@ -399,6 +449,68 @@ For Octane: set `OTEL_*` env vars at process/container level, not just `.env`.
 
 ---
 
+## Job Queue Monitoring & Admin Visibility (Horizon vs Telescope vs Others)
+
+**Direct answer to "can I see queue/job reduction in Telescope?"**: partially, not really for production monitoring.
+
+| Tool | What it shows | Fit for job/queue visibility |
+|---|---|---|
+| [laravel/horizon](https://laravel.com/docs/horizon) | **Purpose-built** for Redis queues — live dashboard of jobs (pending/processing/completed/failed), throughput graphs, wait-time metrics, per-queue breakdown, failed job retry UI, tags for filtering by job type | **This is the right tool for queue monitoring at scale.** Use this, not Telescope, for production job visibility. |
+| [laravel/telescope](https://laravel.com/docs/telescope) | Records individual job dispatches/executions as part of general request/event debugging — good for "did this one job run and what did it do" | Not built for live throughput/backlog monitoring — it's a debug log, not an operations dashboard. Fine for dev, wrong tool for watching queue depth in prod. |
+| [laravel/pulse](https://laravel.com/docs/pulse) | App-wide performance dashboard — slow jobs, slow queries, exceptions, usage by user, queue sizes as one panel among several | Good complementary high-level view; pairs with Horizon rather than replacing it |
+| [spatie/laravel-schedule-monitor](https://github.com/spatie/laravel-schedule-monitor) | Monitors **scheduled tasks** (cron), not queued jobs — alerts if a scheduled command didn't run | Different problem: use alongside Horizon, not instead of it |
+| Prometheus + Grafana (via `lkaemmerling/laravel-horizon-prometheus-exporter`) | Exports Horizon's own metrics for long-term retention/alerting (Horizon's UI itself doesn't retain history well) | Add this once Horizon's built-in UI isn't enough for historical trend/alerting needs |
+
+**For your setup**: Horizon as the primary queue dashboard (real-time, per-queue), Pulse for overall app health at a glance, Prometheus+Grafana exporter once you need alerting/history beyond what Horizon's UI retains. Telescope stays for local dev debugging only — don't rely on it in production at this scale (it writes every entry to DB and will itself become a bottleneck under 500k req/sec).
+
+## University Multi-Module Platform Stack (Hostel/Transport/Halls + Full SIS)
+
+Given the actual shape of the project — five Laravel projects: a combined booking system (hostel + transport + hall booking) and a separate full SIS (admissions → course catalog → marks → attendance) — here's what maps to each module.
+
+### Booking System (Hostel / Transport / Hall)
+| Package | Purpose |
+|---|---|
+| [spatie/laravel-model-states](https://github.com/spatie/laravel-model-states) | Booking state machine (requested → confirmed → checked-in → completed → cancelled) |
+| [netsells/laravel-geoscope](https://github.com/netsells/laravel-geoscope) | Distance/geofence queries for transport routing (nearest stop, route matching) |
+| [spatie/laravel-google-calendar](https://github.com/spatie/laravel-google-calendar) | If hall/room bookings need calendar sync for staff |
+| Custom double-booking prevention: DB-level unique constraints + pessimistic locking (`lockForUpdate()`) | Not a package — at this scale, race conditions on hostel room/hall slot booking need row-level locks, not application-level checks. This is the actual hard problem in a booking system, not a package gap. |
+| [spatie/laravel-sluggable](https://github.com/spatie/laravel-sluggable) | Clean URLs for hall/room listings |
+| [laravel/reverb](https://laravel.com/docs/reverb) | Live seat/room availability updates without polling |
+| [spatie/laravel-webhook-client](https://github.com/spatie/laravel-webhook-client) / [webhook-server](https://github.com/spatie/laravel-webhook-server) | If transport booking integrates with an external fleet/GPS provider |
+
+### Student Information System (Admissions → Catalog → Courses → Marks → Attendance)
+| Package | Purpose |
+|---|---|
+| [spatie/laravel-permission](https://github.com/spatie/laravel-permission) | Role separation: student / faculty / admin / registrar — non-negotiable for a system this size |
+| [spatie/laravel-model-states](https://github.com/spatie/laravel-model-states) | Admission pipeline state machine (applied → verified → admitted → enrolled → graduated) |
+| [maatwebsite/excel](https://github.com/SpartnerNL/Laravel-Excel) | Bulk marks upload/download, attendance import from biometric/RFID exports |
+| [barryvdh/laravel-dompdf](https://github.com/barryvdh/laravel-dompdf) or [spatie/laravel-pdf](https://github.com/spatie/laravel-pdf) | Marksheets, admit cards, transcripts, ID cards |
+| [spatie/laravel-activitylog](https://github.com/spatie/laravel-activitylog) | Audit trail — mandatory for marks/attendance edits (academic integrity, dispute resolution) |
+| [spatie/laravel-medialibrary](https://github.com/spatie/laravel-medialibrary) | Admission documents, photos, certificates |
+| Attendance at scale: Kafka (`mateusjunges/laravel-kafka`) or Redis Streams, not direct DB writes | If attendance is captured via biometric/RFID at thousands of scan events per minute across campus, direct synchronous DB writes will choke — queue the events, batch-write |
+| [dedoc/scramble](https://github.com/dedoc/scramble) | If SIS exposes an API to the booking system / mobile app — keep the OpenAPI spec accurate across 5 projects |
+
+### Cross-Cutting (shared across all 5 projects)
+| Need | Package/Approach |
+|---|---|
+| Single sign-on across all 5 Laravel apps | [laravel/passport](https://laravel.com/docs/passport) as a central OAuth2 server, or [workos/workos-php](https://github.com/workos/workos-php) for SSO — one auth service, not 5 separate login systems |
+| Shared UI kit across projects | [filamentphp/filament](https://github.com/filamentphp/filament) for all admin panels — consistent look/UX across hostel/transport/hall/SIS admin screens with one shared design system |
+| Inter-service communication | Kafka (`mateusjunges/laravel-kafka`) — SIS enrolls a student → event → hostel/transport systems react (auto-allocate room, activate transport pass) without tight coupling |
+| Shared config/secrets across 5 deployments | Not a package — a shared `.env` management strategy (Vault, or even a private Composer package holding shared config helpers) matters more at 5-project scale than any single package |
+
+## Docker at This Scale
+
+| Piece | Notes |
+|---|---|
+| [laravel/sail](https://laravel.com/docs/sail) | Fine for local dev, **not** what you run in production at 500k req/sec — don't confuse the two |
+| Multi-stage Dockerfile with FrankenPHP base image | Production image should build once, run everywhere — Octane+FrankenPHP in the container, not PHP-FPM |
+| Docker Compose for local multi-service dev (5 apps + Redis + Postgres + Kafka) | Practical for local dev across 5 interconnected Laravel projects; **not** what you'd run in prod at this scale — prod needs orchestration (see below) |
+| Kubernetes / Nomad, or your own Porter (Firecracker microVM) | At 500k req/sec across 5 services, plain `docker run` on a few boxes isn't enough — you need real orchestration for autoscaling, rolling deploys, health-checked restarts. This is exactly the problem your own Porter project is aimed at — worth using your own tooling here rather than reaching for vanilla Coolify/Dokploy, which are built for much smaller scale. |
+| PgBouncer | Mandatory in front of Postgres at this write volume — see Database Infra section above |
+| Redis Sentinel or Redis Cluster | A single Redis instance backing Horizon queues + cache + sessions will itself become the bottleneck at this scale — needs HA/clustering |
+
+**Bottom line on Docker + 500k req/sec + 5 Laravel projects**: the container runtime (Docker) is the easy part. The hard part is orchestration and traffic shaping across 5 services with shared identity/auth and an event bus tying them together — that's an infra design problem your existing Porter/dispatchd-go work is already positioned to solve better than any Composer package list can.
+
 ## License
 
-[CC0](LICENSE) — public domain, same as most awesome lists.
+[MIT](LICENSE)
